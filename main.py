@@ -816,39 +816,66 @@ async def update_user_stats(user_id, result):
     except Exception as e:
         logger.error(f"Error saving stats: {e}")
 
+def escape_markdown(text):
+    """تهريب الأحرف الخاصة في Markdown"""
+    if text is None:
+        return 'Unknown'
+    text = str(text)
+    # تهريب الأحرف الخاصة
+    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in special_chars:
+        text = text.replace(char, f'\\{char}')
+    return text
+
 async def format_card_result(card_line, result):
     """تنسيق نتيجة البطاقة"""
     card_info = result.get('card_info', {})
     user_info = result.get('user_info', {})
     
     # تحديد الرمز بناءً على الحالة
-    if result['status'] == 'CHARGED':
+    if result.get('status') == 'CHARGED':
         status_emoji = "✅"
-    elif result['code'] == 'DECLINED':
+        status_text = "Approved 🔥"
+    elif result.get('code') == 'DECLINED':
         status_emoji = "❌"
+        status_text = "Declined"
     else:
         status_emoji = "❓"
+        status_text = "Unknown"
     
-    formatted = f"""
-┌─────────────────────────────
-│ 💳 **Card Information**
-├─────────────────────────────
-│ 📟 Number: `{result['card_display']}`
-│ 📅 Expiry: {result.get('month', 'MM')}/{result.get('year', 'YY')}
-│ 🔐 CVV: ***
-│ 🏦 Bank: {card_info.get('bank', 'Unknown')}
-│ 🌍 Country: {card_info.get('country', 'Unknown')} {card_info.get('flag', '')}
-│ 🏷️ Type: {card_info.get('type', 'Unknown')} - {card_info.get('brand', 'Unknown')}
-├─────────────────────────────
-│ 📊 **Result**
-│ {status_emoji} {result['message']}
-│ ⏱️ Time: {result['time']} seconds
-├─────────────────────────────
-│ 👤 **Generated Info**
-│ 👤 Name: {user_info.get('first_name', 'Unknown')} {user_info.get('last_name', 'Unknown')}
-│ 📧 Email: {user_info.get('email', 'Unknown')}
-└─────────────────────────────
-"""
+    # الحصول على القيم بأمان
+    card_display = result.get('card_display', 'N/A')
+    month = result.get('month', 'MM')
+    year = result.get('year', 'YY')
+    bank = card_info.get('bank', 'Unknown')
+    country = card_info.get('country', 'Unknown')
+    flag = card_info.get('flag', '')
+    card_type = card_info.get('type', 'Unknown')
+    brand = card_info.get('brand', 'Unknown')
+    result_msg = result.get('message', 'No message')
+    time_taken = result.get('time', 0)
+    first_name = user_info.get('first_name', 'Unknown') if user_info else 'Unknown'
+    last_name = user_info.get('last_name', '') if user_info else ''
+    email = user_info.get('email', 'Unknown') if user_info else 'Unknown'
+    
+    formatted = (
+        f"💳 Card Check Result\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📟 Card: {card_display}\n"
+        f"📅 Expiry: {month}/{year}\n"
+        f"🏦 Bank: {bank}\n"
+        f"🌍 Country: {country} {flag}\n"
+        f"🏷 Type: {card_type} {brand}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"{status_emoji} Status: {status_text}\n"
+        f"📝 Response: {result_msg}\n"
+        f"⏱ Time: {time_taken}s\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 Name: {first_name} {last_name}\n"
+        f"📧 Email: {email}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🤖 Bot: @chkchannel11"
+    )
     
     return formatted
 
@@ -1048,16 +1075,14 @@ async def process_single_card_handler(message: Message):
         
         await processing_msg.edit_text(
             formatted_result,
-            reply_markup=keyboard.as_markup(),
-            parse_mode=ParseMode.MARKDOWN
+            reply_markup=keyboard.as_markup()
         )
         
     except Exception as e:
         logger.error(f"Error processing card: {e}")
         await processing_msg.edit_text(
-            f"❌ Error processing card:\n`{str(e)}`\n\n"
-            "Please check the format and try again.",
-            parse_mode=ParseMode.MARKDOWN
+            f"❌ Error processing card:\n{str(e)}\n\n"
+            "Please check the format and try again."
         )
 
 @router.callback_query(F.data == "combo_check")
