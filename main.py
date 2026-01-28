@@ -1352,8 +1352,8 @@ async def process_combo_file(file_path, user_id, message, gateway_type="crisisca
             # تحديث الإحصائيات
             await update_user_stats(user_id, result)
             
-            # تحديث الرسالة مع الواجهة الجديدة
-            if i % 2 == 0 or i == len(lines) or i == 1:
+            # تحديث الرسالة مع الواجهة الجديدة (كل 5 بطاقات لتجنب أخطاء Telegram)
+            if total_count % 5 == 0 or total_count == total_lines or total_count == 1:
                 # إنشاء الأزرار
                 keyboard = InlineKeyboardBuilder()
                 keyboard.row(
@@ -1379,8 +1379,9 @@ async def process_combo_file(file_path, user_id, message, gateway_type="crisisca
                 
                 try:
                     await message.edit_text(status_msg, reply_markup=keyboard.as_markup())
-                except:
-                    pass
+                except Exception as e:
+                    # تجاهل أخطاء تحديث الرسالة
+                    logger.debug(f"Message update skipped: {e}")
             
             # تأخير بين البطاقات لتجنب الحظر
             await asyncio.sleep(2)
@@ -1389,11 +1390,11 @@ async def process_combo_file(file_path, user_id, message, gateway_type="crisisca
         if user_id in user_sessions:
             user_sessions[user_id]['stop_combo'] = False
         
-        return charged_count + approved_count, total_count, stopped
+        return charged_count, approved_count, declined_count, total_count, stopped
         
     except Exception as e:
         logger.error(f"Error processing combo file: {e}")
-        return 0, 0, False
+        return 0, 0, 0, 0, False
 
 # ===========================================
 # معالجات الأوامر
@@ -1688,6 +1689,12 @@ async def stop_combo_processing(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("start_combo:"))
 async def start_combo_processing(callback: CallbackQuery):
     """بدء معالجة كومبو"""
+    # الرد على ال callback فوراً لتجنب الخطأ
+    try:
+        await callback.answer("🔄 جاري بدء الفحص...")
+    except:
+        pass
+    
     file_path = callback.data.split(":")[1]
     user_id = callback.from_user.id
     
@@ -1722,11 +1729,12 @@ async def start_combo_processing(callback: CallbackQuery):
         start_time = time.time()
         
         # معالجة الملف
-        valid_count, total_count, stopped = await process_combo_file(
+        charged_count, approved_count, declined_count, total_count, stopped = await process_combo_file(
             file_path, user_id, processing_msg, gateway_type
         )
         
         elapsed_time = round(time.time() - start_time, 1)
+        valid_count = charged_count + approved_count
         
         # النتيجة النهائية
         if stopped:
@@ -1743,8 +1751,9 @@ async def start_combo_processing(callback: CallbackQuery):
 • 📄 File: Processed
 • 🌐 Gateway: {gateway_name}
 • 💳 Total Cards: `{total_count}`
-• ✅ Valid Cards: `{valid_count}`
-• ❌ Invalid Cards: `{total_count - valid_count}`
+• 💰 Charged: `{charged_count}`
+• ✅ Approved: `{approved_count}`
+• ❌ Declined: `{declined_count}`
 • ⏱️ Time Taken: `{elapsed_time} seconds`
 • 📈 Success Rate: `{round((valid_count/total_count)*100, 2) if total_count > 0 else 0}%`
 
